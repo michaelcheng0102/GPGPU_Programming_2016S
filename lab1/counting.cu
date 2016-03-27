@@ -9,42 +9,42 @@
 
 #define K 500
 #define N 40000000
-#define k 9
+#define k 10
 
 __device__ __host__ int CeilDiv(int a, int b) { return (a-1)/b + 1; }
 __device__ __host__ int CeilAlign(int a, int b) { return CeilDiv(a, b) * b; }
 __device__ int table[N][k];
 
 
-__global__ void buildTable(const char *text, int *pos, int text_size)
+__global__ void buildTable(const char *text, int *pos, int text_size, int depth)
 {
-	int idx = (blockIdx.x*blockDim.x + threadIdx.x) % text_size;
-	int level=1;
-	for(int depth=0; depth<k; depth++) {
-		if(depth == 0) {
-			if( text[idx]  == '\n') {
-				table[idx][0] = 0;
-			} else {
-				table[idx][0] = 1;
-			}
+	int idx = blockIdx.x*blockDim.x + threadIdx.x;
+    int level = 1 << depth;
+    if(idx >= text_size) {
+        return;
+    }
+	if(depth == 0) {
+		if( text[idx]  == '\n') {
+			table[idx][0] = 0;
 		} else {
-			if( idx < text_size/level ) {
-				if( table[idx*2][depth-1]==1 && table[idx*2+1][depth-1]==1 ) {
-					table[idx][depth] = 1;
-				}
+			table[idx][0] = 1;
+		}
+	} else {
+		if( idx < text_size/level ) {
+			if( table[idx*2][depth-1]==1 && table[idx*2+1][depth-1]==1 ) {
+				table[idx][depth] = 1;
 			}
 		}
-		level = level*2;
-		__syncthreads();
 	}
 }
 
 
 __global__ void countPos(const char *text, int *pos, int text_size)
 {
-	int idx = (blockIdx.x*blockDim.x + threadIdx.x) % text_size;
-	int level=0;
-	
+	int idx = blockIdx.x*blockDim.x + threadIdx.x;
+    if(idx >= text_size) {
+        return ;
+    }
 	
 	if(table[idx][0] == 0) {
 		// if the it represents newline
@@ -62,32 +62,34 @@ __global__ void countPos(const char *text, int *pos, int text_size)
 			if (index%2 == 0) {
 				// Tf the child is the left child, will have to travel to the parents' left node.
 				// That is, the length will have to be added by add_length;
-				length = length+add_length;
 				index = (index-1);
+				length = length + add_length;
+                //printf("%2: len=%d, index=%d, add=%d, depth=%d\n", length, index, add_length, depth);
 			}
 			if(table[(index-1)/2][depth+1] == 1) {
 				add_length = add_length*2;
 				depth = depth+1;
 				index = (index-1)/2;
+                //printf("checktable: len=%d, index=%d, add=%d, depth=%d\n", length, index, add_length, depth);
 			} else {
+                //printf("else1: len=%d, index=%d, add=%d, depth=%d\n", length, index, add_length, depth);
 				break;
 			}
 		}
-		while(depth >= 0) {
-			if(index <= 0) {
-				break;
-			}
-			if(table[idx][depth] == 1) {
+		while(depth >= 0 && index >= 0 && add_length > 0) {
+			if(table[index][depth] == 1) {
 				// the parent is 0 and have to do to left child's left node
-				index = index*2-1;
-				length = length+add_length;
-				depth = depth-1;
+				index = index*2 - 1;
+				length = length + add_length;
+				depth = depth - 1;
 				add_length = add_length/2;
+                //printf("if1: len=%d, index=%d, add=%d, depth=%d\n", length, index, add_length, depth);
 			} else {
 				// table[idx][depth] == 0 and have to go to the right child
-				index = index*2+1;
-				depth = depth-1;
+				index = index*2 + 1;
+				depth = depth - 1;
 				add_length = add_length/2;
+                //printf("if2: len=%d, index=%d, add=%d, depth=%d\n", length, index, add_length, depth);
 			}
 		}
 		pos[idx] = length;
@@ -120,10 +122,12 @@ void CountPosition(const char *text, int *pos, int text_size)
 {
 	int count = text_size/2;
 	printf("text size: %d\n", text_size);
-	
-	buildTable<<<40000, 1024>>>(text, pos, text_size);
+    for(int depth=0; depth<k; depth++) {
+	    buildTable<<<40000, 1024>>>(text, pos, text_size, depth);
+        cudaDeviceSynchronize();
+    }
 	printTable<<<1, 1>>>();
-	//countPos<<<40000, 101>>>(text, pos, text_size);
+	countPos<<<40000, 1024>>>(text, pos, text_size);
 	//test<<<1,1>>>(text, pos, text_size);
 }
 

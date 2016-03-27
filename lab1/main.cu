@@ -96,6 +96,10 @@ int main(int argc, char **argv)
 	// Part I check
 	const int *golden = pos.data();
 	const int *yours = pos_yours_sync.get_cpu_ro();
+    for(int i=0; i<400; i++) {
+        printf("pos:%d   %d <-> %d\n", i, yours[i], golden[i]);
+    }
+
 	int n_match1 = mismatch(golden, golden+n, yours).first - golden;
 	if (n_match1 != n) {
 		puts("Part I WA!");
