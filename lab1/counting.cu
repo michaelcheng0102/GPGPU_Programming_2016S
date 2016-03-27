@@ -6,6 +6,8 @@
 #include <thrust/functional.h>
 #include <thrust/device_ptr.h>
 #include <thrust/execution_policy.h>
+#include <thrust/device_vector.h>
+#include <thrust/copy.h>
 
 #define K 500
 #define N 40000000
@@ -126,20 +128,36 @@ void CountPosition(const char *text, int *pos, int text_size)
 	    buildTable<<<40000, 1024>>>(text, pos, text_size, depth);
         cudaDeviceSynchronize();
     }
-	printTable<<<1, 1>>>();
 	countPos<<<40000, 1024>>>(text, pos, text_size);
 	//test<<<1,1>>>(text, pos, text_size);
 }
 
+struct is_one {
+    __device__ __host__ bool operator()(const int &check) {
+        return check == 1;
+    }
+};
+
 int ExtractHead(const int *pos, int *head, int text_size)
 {
-	int *buffer;
+	printf("check\n");
+    int *buffer;
 	int nhead;
 	cudaMalloc(&buffer, sizeof(int)*text_size*2); // this is enough
 	thrust::device_ptr<const int> pos_d(pos);
 	thrust::device_ptr<int> head_d(head), flag_d(buffer), cumsum_d(buffer+text_size);
-
+    
+    printf("Extract Head\n");
 	// TODO
+    nhead = thrust::count(thrust::device, pos_d, pos_d+text_size, 1);
+    thrust::device_vector<int> seq(text_size);
+    for(int i=0; i<text_size; i++) {
+        seq[i] = i;
+        printf("In seq:%d\n", i);
+    }
+    thrust::copy_if(seq.begin(), seq.end(), pos_d, head_d, is_one());
+    printf("Extract Head\n");
+
 
 	cudaFree(buffer);
 	return nhead;
