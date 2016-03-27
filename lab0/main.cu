@@ -18,6 +18,7 @@ __global__ void SomeTransform(char *input_gpu, int fsize) {
 	if (input_gpu[idx] >= 97 && input_gpu[idx] <= 122) {
         input_gpu[idx] = input_gpu[idx]-32;
     }
+	printf("test\n");
 }
 
 int main(int argc, char **argv)
