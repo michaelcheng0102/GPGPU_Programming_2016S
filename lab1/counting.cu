@@ -8,6 +8,8 @@
 #include <thrust/execution_policy.h>
 #include <thrust/device_vector.h>
 #include <thrust/copy.h>
+#include <time.h>
+
 
 #define K 500
 #define N 40000000
@@ -16,7 +18,6 @@
 __device__ __host__ int CeilDiv(int a, int b) { return (a-1)/b + 1; }
 __device__ __host__ int CeilAlign(int a, int b) { return CeilDiv(a, b) * b; }
 __device__ int table[N][k];
-
 
 __global__ void buildTable(const char *text, int *pos, int text_size, int depth)
 {
@@ -123,7 +124,6 @@ __global__ void printTable()
 void CountPosition(const char *text, int *pos, int text_size)
 {
 	int count = text_size/2;
-	printf("text size: %d\n", text_size);
     for(int depth=0; depth<k; depth++) {
 	    buildTable<<<40000, 1024>>>(text, pos, text_size, depth);
         cudaDeviceSynchronize();
@@ -140,29 +140,81 @@ struct is_one {
 
 int ExtractHead(const int *pos, int *head, int text_size)
 {
-	printf("check\n");
     int *buffer;
 	int nhead;
 	cudaMalloc(&buffer, sizeof(int)*text_size*2); // this is enough
 	thrust::device_ptr<const int> pos_d(pos);
 	thrust::device_ptr<int> head_d(head), flag_d(buffer), cumsum_d(buffer+text_size);
     
-    printf("Extract Head\n");
-	// TODO
-    nhead = thrust::count(thrust::device, pos_d, pos_d+text_size, 1);
     thrust::device_vector<int> seq(text_size);
-    for(int i=0; i<text_size; i++) {
+    /*for(int i=0; i<text_size; i++) {
         seq[i] = i;
-        printf("In seq:%d\n", i);
-    }
-    thrust::copy_if(seq.begin(), seq.end(), pos_d, head_d, is_one());
-    printf("Extract Head\n");
+    }*/
+    thrust:sequence(seq.begin(), seq.end());
 
+    thrust::device_ptr<int> count = thrust::copy_if(seq.begin(), seq.end(), pos_d, head_d, is_one());
+
+    nhead = count - head_d;
 
 	cudaFree(buffer);
 	return nhead;
 }
 
+__global__ void switch2Char(char *text, int *pos, int *head, int text_size, int n_head) {
+    int idx = blockIdx.x*blockDim.x + threadIdx.x;
+    if(idx >= text_size) {
+        return;
+    }
+    if(pos[idx]%2 == 0 && pos[idx] != 0) {
+        // should switch with the previous character
+        char temp;
+        temp = text[idx];
+        text[idx] = text[idx-1];
+        text[idx-1] = temp;
+    }
+}
+
+__global__ void printCharArray(char *text) {
+    for(int i=0; i<20; i++) {
+        printf("%c", text[i]);
+    }
+    printf("\n");
+}
+
+__device__ bool checkPrime(int num) {
+    if(num == 1) {
+        return false;
+    }
+    for(int i=2; i<num; i++) {
+        if(num%i == 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+__global__ void convertPrimeToStar(char *text, int *pos, int text_size) {
+    int idx = blockIdx.x*blockDim.x + threadIdx.x;
+    if(idx >= text_size) {
+        return;
+    }
+    if(checkPrime(pos[idx])) {
+        text[idx] = '*';
+    }
+}
+
+
 void Part3(char *text, int *pos, int *head, int text_size, int n_head)
 {
+    srand(time(NULL));
+    int ran = rand();
+    if(ran%2 == 0) {
+        //printCharArray<<<1, 1>>>(text);
+        switch2Char<<<40000, 1024>>>(text, pos, head, text_size, n_head);
+        //printCharArray<<<1, 1>>>(text);
+    } else {
+        //printCharArray<<<1, 1>>>(text);
+        convertPrimeToStar<<<40000, 1024>>>(text, pos, text_size);
+        //printCharArray<<<1, 1>>>(text);
+    }
 }
