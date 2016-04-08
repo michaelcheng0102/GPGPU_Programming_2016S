@@ -6,10 +6,10 @@
 
 static const unsigned W = 640;
 static const unsigned H = 480;
-static const unsigned NFRAME = 360;
+static const unsigned NFRAME = 240;
 __device__ const unsigned w = 640;
 __device__ const unsigned h = 480;
-__device__ const unsigned n = 360;
+__device__ const unsigned n = 240;
 
 struct Lab2VideoGenerator::Impl {
 	int t = 0;
