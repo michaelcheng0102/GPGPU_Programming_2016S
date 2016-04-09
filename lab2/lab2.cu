@@ -1,94 +1,32 @@
 #include "lab2.h"
+#include <time.h>
 #include <math.h>
 
 #define PI 3.141592653589
-
+#define S 1000
+#define fps 24
 
 static const unsigned W = 640;
 static const unsigned H = 480;
-static const unsigned NFRAME = 240;
+static const unsigned NFRAME = 480;
 __device__ const unsigned w = 640;
 __device__ const unsigned h = 480;
-__device__ const unsigned n = 240;
+__device__ const unsigned n = 480;
+static int flag = 0;
+int *tempx;
+int *tempy;
+__device__ int error[S];
+__device__ int err_count = 0;
+
 
 struct Lab2VideoGenerator::Impl {
 	int t = 0;
 };
 
-__device__ static int permutation[] = { 151,160,137,91,90,15,
-	131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,8,99,37,240,21,10,23,
-	190, 6,148,247,120,234,75,0,26,197,62,94,252,219,203,117,35,11,32,57,177,33,
-	88,237,149,56,87,174,20,125,136,171,168, 68,175,74,165,71,134,139,48,27,166,
-	77,146,158,231,83,111,229,122,60,211,133,230,220,105,92,41,55,46,245,40,244,
-	102,143,54, 65,25,63,161, 1,216,80,73,209,76,132,187,208, 89,18,169,200,196,
-	135,130,116,188,159,86,164,100,109,198,173,186, 3,64,52,217,226,250,124,123,
-	5,202,38,147,118,126,255,82,85,212,207,206,59,227,47,16,58,17,182,189,28,42,
-	223,183,170,213,119,248,152, 2,44,154,163, 70,221,153,101,155,167, 43,172,9,
-	129,22,39,253, 19,98,108,110,79,113,224,232,178,185, 112,104,218,246,97,228,
-	251,34,242,193,238,210,144,12,191,179,162,241, 81,51,145,235,249,14,239,107,
-	49,192,214, 31,181,199,106,157,184, 84,204,176,115,121,50,45,127, 4,150,254,
-	138,236,205,93,222,114,67,29,24,72,243,141,128,195,78,66,215,61,156,180,
-	151,160,137,91,90,15,
-	131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,8,99,37,240,21,10,23,
-	190, 6,148,247,120,234,75,0,26,197,62,94,252,219,203,117,35,11,32,57,177,33,
-	88,237,149,56,87,174,20,125,136,171,168, 68,175,74,165,71,134,139,48,27,166,
-	77,146,158,231,83,111,229,122,60,211,133,230,220,105,92,41,55,46,245,40,244,
-	102,143,54, 65,25,63,161, 1,216,80,73,209,76,132,187,208, 89,18,169,200,196,
-	135,130,116,188,159,86,164,100,109,198,173,186, 3,64,52,217,226,250,124,123,
-	5,202,38,147,118,126,255,82,85,212,207,206,59,227,47,16,58,17,182,189,28,42,
-	223,183,170,213,119,248,152, 2,44,154,163, 70,221,153,101,155,167, 43,172,9,
-	129,22,39,253, 19,98,108,110,79,113,224,232,178,185, 112,104,218,246,97,228,
-	251,34,242,193,238,210,144,12,191,179,162,241, 81,51,145,235,249,14,239,107,
-	49,192,214, 31,181,199,106,157,184, 84,204,176,115,121,50,45,127, 4,150,254,
-	138,236,205,93,222,114,67,29,24,72,243,141,128,195,78,66,215,61,156,180
-};
-
-__device__ static int p[512];
-
-
-class ImprovedNoise {
-
-	public:
-	    __device__ static double noise(double x, double y, double z) {
-			int X = (int)floor(x) & 255,
-				Y = (int)floor(y) & 255,
-				Z = (int)floor(z) & 255;
-
-			x -= floor(x);
-			y -= floor(y);
-			z -= floor(z);
-			double u = fade(x),
-				   v = fade(y),
-				   w = fade(z);
-
-			int A = p[X  ]+Y, AA = p[A]+Z, AB = p[A+1]+Z,
-				B = p[X+1]+Y, BA = p[B]+Z, BB = p[B+1]+Z;
-
-			return lerp(w, lerp(v, lerp(u, grad(p[AA  ], x  , y  , z   ), grad(p[BA  ], x-1, y  , z   )), lerp(u, grad(p[AB  ], x  , y-1, z   ), grad(p[BB  ], x-1, y-1, z   ))), lerp(v, lerp(u, grad(p[AA+1], x  , y  , z-1 ), grad(p[BA+1], x-1, y  , z-1 )), lerp(u, grad(p[AB+1], x  , y-1, z-1 ), grad(p[BB+1], x-1, y-1, z-1 ))));
-		}
-
-		__device__ static double fade(double t) {return t * t * t * (t * (t * 6 - 15) + 10);}
-		__device__ static double lerp(double t, double a, double b) { return a + t * (b - a);}
-		__device__ static double grad(int hash, double x, double y, double z) {
-			int h = hash & 15;
-			double u = h < 8 ? x : y,
-				   v = h < 4 ? y : h == 12 || h == 14 ? x : z;
-			return ((h & 1) == 0 ? u : -u) + ((h & 2) == 0 ? v : -v);
-		}
-
-
-};
-
-__global__ void initialP(){
-	for (int i=0; i < 256 ; i++) p[256+i] = p[i] = permutation[i]; 
+Lab2VideoGenerator::Lab2VideoGenerator(): impl(new Impl) {
 }
 
-__device__ int ball(int r, double wp, double hp, double tp, double w0, double h0) {
-	double d = (wp-w0) * (wp-w0) + (hp-h0) * (hp-h0);
-	if(d <= r * r) return 1;
-	else return 0;
-
-}
+Lab2VideoGenerator::~Lab2VideoGenerator() {}
 
 void Lab2VideoGenerator::get_info(Lab2VideoInfo &info) {
 	info.w = W;
@@ -103,30 +41,175 @@ __global__ void setPixelY(int time, uint8_t *yuv) {
 	int idx = blockIdx.x*blockDim.x + threadIdx.x;
 	int x = idx % w;
 	int y = idx / w;
-	int weight = (x+y) / (w+h);
 	//*(yuv+idx) = weight*time*255/n;
-	printf("idx: %d, x:%d, y:%d\n", idx, x, y);
+	//printf("idx: %d, x:%d, y:%d\n", idx, x, y);
 	yuv[idx] = ( (idx%w) * 255 * abs(cos(time*PI/180.0))) / ( w );
 }
 
-__global__ void setPixelU(int time, uint8_t *yuv) {
-	int idx = blockIdx.x * blockDim.x + threadIdx.x;
-	double tp = time/n;
-	if(idx >= WG * HG / 4) return;
-	double wp = (double)(idx%(w/2));
-	double hp = (double)(idx/(w/2)); 
-	int line = (int)(w/2 * sin(tp*3.14159));
-	if(wp > line)
-		yuv[idx] = (int)(128 + 128 * ImprovedNoise::noise(wp/30, hp/20, tp*tp*5));
-	else
-		yuv[idx] = (int)(128 - 128 * ImprovedNoise::noise(wp/30, hp/20, tp*tp*5));
+void generate_star() {
+	srand(time(NULL));
+	tempx = (int *)malloc(S*sizeof(int));
+	tempy = (int *)malloc(S*sizeof(int));
+	for(int i=0; i<S; i++) {
+		tempx[i] = rand() % (W/4);
+		tempy[i] = rand() % (H/4);
+		printf("%d   x=%d, y=%d\n", i, tempx[i], tempy[i]);
+	}
+}
+
+__global__ void test(int *x, int *y) {
+	for(int i=0; i<S; i++) {
+		printf("%d   x=%d y=%d\n", i, x[i], y[i]);
+	}
+}
+
+__device__ int hash_size(int x, int y) {
+	if((x+y)%16 == 0) return 4;
+	if((x+y)%16 <= 2) return 3;
+	if((x+y)%16 <= 6) return 2;
+	else return 1;
+}
+
+__global__ void paintStar(int *x, int *y, int time, uint8_t *yuv) {
+	int idx = blockIdx.x*blockDim.x + threadIdx.x;
+	if(idx > S) return;
+	if(x[idx]*4+y[idx]*4*w >= w*h) {
+		error[err_count]=idx;
+		err_count ++;
+	}
+	for(int i=0; i<err_count; i++) {
+		if(idx == error[i]) return;
+	}
+
+	int len = hash_size(x[idx], y[idx]);
+	for(int i=0; i<len; i++) {
+		for(int j=0; j<len; j++) {
+			yuv[ x[idx]*4 + y[idx]*4*w + i + j*w ] = 255;
+		}
+	}
+	//yuv[ x[idx]*4 + y[idx]*4*w  ] = 128 + 50*cos( cos(time*1.0)/10.0 + cos(1.0*x[idx]/w) + cos(1.0*y[idx]/h) );
+	//yuv[ x[idx]*2 + y[idx]*2*w +1 ] = 255;
+	//yuv[ x[idx]*2 + y[idx]*2*w +w ] = 255;
+	//yuv[ x[idx]*2 + y[idx]*2*w +w+1 ] = 255;
+}
+
+__device__ void draw(int x1, int y1, uint8_t *yuv) {
+	if(x1>=0 && x1<w && y1>=0 && y1<h)
+		yuv[x1+y1*w] = 255;
+}
+
+__global__ void printStripe(int *x, int *y, int time, uint8_t *yuv, int len) {
+	int idx = blockIdx.x+blockDim.x + threadIdx.x;
+	if(idx > S) return;
+	int x1 = x[idx]*4;
+	int y1 = y[idx]*4;
+	int dx = x1 - w/2;
+	int dy = y1 - h/2;
+	if(abs(dx) > abs(dy)) {
+		if(x1 < w/2) {
+			for(int i=x1; i>(x1 - len); i--)
+				draw(i, y1 + dy * (i - x1) / dx, yuv);
+		} else {
+			for(int i=x1; i<(x1 + len); i++) 
+				draw(i, y1 + dy * (i - x1) / dx, yuv);
+		}
+	} else {
+		if(y1 < h/2) {
+			for(int i=y1; i>(y1 - len); i--)
+				draw(x1 + dx * (i - y1) / dy, i, yuv);
+		} else {
+			for(int i=y1; i<(y1 + len); i++)
+				draw(x1 + dx * (i - y1) / dy, i, yuv);
+		}
+	}
+}
+
+__device__ void erase(int x1, int y1, uint8_t *yuv) {
+	if(x1>=0 && x1<w && y1>=0 && y1<h)
+		yuv[x1+y1*w] = 0;
+}
+
+__global__ void eraseStripe(int *x, int *y, int time, uint8_t *yuv, int len) {
+	int idx = blockIdx.x*blockDim.x + threadIdx.x;
+	if(idx > S) return;
+	int x1 = x[idx]*4;
+	int y1 = y[idx]*4;
+	int dx = x1 - w/2;
+	int dy = y1 - h/2;
+	if(abs(dx) > abs(dy)) {
+		if(x1 < w/2) {
+			for(int i=x1-len; i>=0; i--)
+				draw(i, y1 + dy * (i - x1) / dx, yuv);
+		} else {
+			for(int i=x1+len; i<w; i++) 
+				draw(i, y1 + dy * (i - x1) / dx, yuv);
+		}
+	} else {
+		if(y1 < h/2) {
+			for(int i=y1-len; i>=0; i--)
+				draw(x1 + dx * (i - y1) / dy, i, yuv);
+		} else {
+			for(int i=y1+len; i<h; i++)
+				draw(x1 + dx * (i - y1) / dy, i, yuv);
+		}
+	}
+}
+
+__global__ void drawCircle(uint8_t *yuv, int r) {
+	int idx = blockIdx.x*blockDim.x + threadIdx.x;
+	int x = idx % w;
+	int y = idx / w;
+	int d = (x - w/2) * (x - w/2) + (y - h/2) * (y - h/2);
+	if(d < r*r)
+		yuv[idx] = 255;
 }
 
 void Lab2VideoGenerator::Generate(uint8_t *yuv) {
-	//cudaMemset(yuv, (impl->t)*255/NFRAME, W*H);
-	setPixelY<<<640, 480>>>(impl->t, yuv);
+	int *x;
+	int *y;
+	if(flag == 0) {
+		printf("generate star\n");
+		flag = 1;
+		generate_star();
+	}
+
+// copy coordinate
+	cudaMalloc(&x, S*sizeof(int));
+	cudaMemcpy(x, tempx, S*sizeof(int), cudaMemcpyHostToDevice);
+	cudaMalloc(&y, S*sizeof(int));
+	cudaMemcpy(y, tempy, S*sizeof(int), cudaMemcpyHostToDevice);
+	if(impl->t == 0) {
+		test<<<1, 1>>>(x, y);
+		printf("test\n");
+	}
+// set background to black
+	cudaMemset(yuv, 0, W*H);
+	//setPixelY<<<640, 480>>>(impl->t, yuv);
+	
+	if(impl->t < fps*5)
+		paintStar<<<S/3+1, 3>>>(x, y, impl->t, yuv);
+	else if(impl->t < fps*10){
+		printStripe<<<S/3+1, 3>>>(x, y, impl->t, yuv, impl->t-fps*5);
+		//printf("time = %d;    ratio = %lf\n", impl->t, ((impl->t-fps*5)/(double)(fps*5)));
+	} else if(impl->t < fps*12) {
+		printStripe<<<S/3+1, 3>>>(x, y, impl->t, yuv, 120 + (impl->t-fps*10)*10);
+	} else if(impl->t < fps*15) {
+		//printStripe<<<S/3+1, 3>>>(x, y, impl->t, yuv, 120 + (impl->t-fps*10)*10);
+		eraseStripe<<<S/3+1, 3>>>(x, y, impl->t, yuv, (impl->t-fps*12)*8);
+	}
+	if(impl->t > fps*12) {
+		drawCircle<<<640, 480>>>(yuv, (impl->t-fps*12)*8);
+	}
+
 	cudaDeviceSynchronize();
 	cudaMemset(yuv+W*H, 128, W*H/2);
-	setPixelU<<<640, 480>>>(impl->t, yuv);
 	++(impl->t);
 }
+
+
+
+
+
+
+
+
