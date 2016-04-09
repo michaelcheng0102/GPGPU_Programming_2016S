@@ -6,10 +6,10 @@
 
 static const unsigned W = 640;
 static const unsigned H = 480;
-static const unsigned NFRAME = 360;
+static const unsigned NFRAME = 240;
 __device__ const unsigned w = 640;
 __device__ const unsigned h = 480;
-__device__ const unsigned n = 360;
+__device__ const unsigned n = 240;
 
 struct Lab2VideoGenerator::Impl {
 	int t = 0;
@@ -20,10 +20,7 @@ Lab2VideoGenerator::Lab2VideoGenerator(): impl(new Impl) {
 
 Lab2VideoGenerator::~Lab2VideoGenerator() {}
 
-__device__ PerlinNoise::PerlinNoise() {
-	
-	// Initialize the permutation vector with the reference values
-	p = {
+__device__ static int p[] = {
 		151,160,137,91,90,15,131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,
 		8,99,37,240,21,10,23,190, 6,148,247,120,234,75,0,26,197,62,94,252,219,203,117,
 		35,11,32,57,177,33,88,237,149,56,87,174,20,125,136,171,168, 68,175,74,165,71,
@@ -36,28 +33,27 @@ __device__ PerlinNoise::PerlinNoise() {
 		97,228,251,34,242,193,238,210,144,12,191,179,162,241, 81,51,145,235,249,14,239,
 		107,49,192,214, 31,181,199,106,157,184, 84,204,176,115,121,50,45,127, 4,150,254,
 		138,236,205,93,222,114,67,29,24,72,243,141,128,195,78,66,215,61,156,180 };
-	// Duplicate the permutation vector
-	p.insert(p.end(), p.begin(), p.end());
-}
 
 // Generate a new permutation vector based on the value of seed
-__device__ PerlinNoise::PerlinNoise(unsigned int seed) {
-	p.resize(256);
 
-	// Fill p with values from 0 to 255
-	std::iota(p.begin(), p.end(), 0);
 
-	// Initialize a random engine with seed
-	std::default_random_engine engine(seed);
-
-	// Suffle  using the above random engine
-	std::shuffle(p.begin(), p.end(), engine);
-
-	// Duplicate the permutation vector
-	p.insert(p.end(), p.begin(), p.end());
+__device__ double fade(double t) { 
+	return t * t * t * (t * (t * 6 - 15) + 10);
 }
 
-__device__ double PerlinNoise::noise(double x, double y, double z) {
+__device__ double lerp(double t, double a, double b) { 
+	return a + t * (b - a); 
+}
+
+__device__ double grad(int hash, double x, double y, double z) {
+	int h = hash & 15;
+	// Convert lower 4 bits of hash inot 12 gradient directions
+	double u = h < 8 ? x : y,
+		   v = h < 4 ? y : h == 12 || h == 14 ? x : z;
+	return ((h & 1) == 0 ? u : -u) + ((h & 2) == 0 ? v : -v);
+}
+
+__device__ double noise(double x, double y, double z) {
 	// Find the unit cube that contains the point
 	int X = (int) floor(x) & 255;
 	int Y = (int) floor(y) & 255;
@@ -86,23 +82,6 @@ __device__ double PerlinNoise::noise(double x, double y, double z) {
 	return (res + 1.0)/2.0;
 }
 
-__device__ double PerlinNoise::fade(double t) { 
-	return t * t * t * (t * (t * 6 - 15) + 10);
-}
-
-__device__ double PerlinNoise::lerp(double t, double a, double b) { 
-	return a + t * (b - a); 
-}
-
-__device__ double PerlinNoise::grad(int hash, double x, double y, double z) {
-	int h = hash & 15;
-	// Convert lower 4 bits of hash inot 12 gradient directions
-	double u = h < 8 ? x : y,
-		   v = h < 4 ? y : h == 12 || h == 14 ? x : z;
-	return ((h & 1) == 0 ? u : -u) + ((h & 2) == 0 ? v : -v);
-}
-
-
 void Lab2VideoGenerator::get_info(Lab2VideoInfo &info) {
 	info.w = W;
 	info.h = H;
@@ -118,8 +97,11 @@ __global__ void setPixelY(int time, uint8_t *yuv) {
 	int y = idx / w;
 	int weight = (x+y) / (w+h);
 	//*(yuv+idx) = weight*time*255/n;
-	yuv[idx] = ( (idx%w) * 255 * abs(cos(time*PI/180.0)) ) / ( w );
+	printf("idx: %d, x:%d, y:%d\n", idx, x, y);
+	yuv[idx] = ( (idx%w) * 255 * abs(cos(time*PI/180.0)) * noise(10*x, 10*y, 0.8) ) / ( w );
 }
+
+
 
 void Lab2VideoGenerator::Generate(uint8_t *yuv) {
 	//cudaMemset(yuv, (impl->t)*255/NFRAME, W*H);
