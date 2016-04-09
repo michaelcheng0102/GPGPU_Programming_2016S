@@ -155,13 +155,13 @@ __global__ void eraseStripe(int *x, int *y, int time, uint8_t *yuv, int len) {
 	}
 }
 
-__global__ void drawCircle(uint8_t *yuv, int r) {
+__global__ void drawCircle(uint8_t *yuv, int r, int color) {
 	int idx = blockIdx.x*blockDim.x + threadIdx.x;
 	int x = idx % w;
 	int y = idx / w;
 	int d = (x - w/2) * (x - w/2) + (y - h/2) * (y - h/2);
 	if(d < r*r)
-		yuv[idx] = 255;
+		yuv[idx] = color;
 }
 
 void Lab2VideoGenerator::Generate(uint8_t *yuv) {
@@ -197,8 +197,14 @@ void Lab2VideoGenerator::Generate(uint8_t *yuv) {
 		//printStripe<<<S/3+1, 3>>>(x, y, impl->t, yuv, 120 + (impl->t-fps*10)*10);
 		eraseStripe<<<S/3+1, 3>>>(x, y, impl->t, yuv, (impl->t-fps*12)*8);
 	}
+		cudaMemset(yuv+W*H, 128, W*H/2);
 	if(impl->t > fps*12) {
-		drawCircle<<<640, 480>>>(yuv, (impl->t-fps*12)*8);
+		drawCircle<<<640, 480>>>(yuv, (impl->t-fps*12)*15, 255);
+	}
+
+	if(impl->t > fps*16.5) {
+		drawCircle<<<640, 480>>>(yuv, (impl->t-fps*16.5)*15, 0);
+		paintStar<<<S/3+1, 3>>>(x, y, impl->t, yuv);
 	}
 
 	cudaDeviceSynchronize();
