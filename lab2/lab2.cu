@@ -188,22 +188,22 @@ void Lab2VideoGenerator::Generate(uint8_t *yuv) {
 	
 	if(impl->t < fps*5)
 		paintStar<<<S/3+1, 3>>>(x, y, impl->t, yuv);
-	else if(impl->t < fps*10){
+	else if(impl->t < fps*8){
 		printStripe<<<S/3+1, 3>>>(x, y, impl->t, yuv, impl->t-fps*5);
-		//printf("time = %d;    ratio = %lf\n", impl->t, ((impl->t-fps*5)/(double)(fps*5)));
-	} else if(impl->t < fps*12) {
-		printStripe<<<S/3+1, 3>>>(x, y, impl->t, yuv, 120 + (impl->t-fps*10)*10);
-	} else if(impl->t < fps*15) {
-		//printStripe<<<S/3+1, 3>>>(x, y, impl->t, yuv, 120 + (impl->t-fps*10)*10);
-		eraseStripe<<<S/3+1, 3>>>(x, y, impl->t, yuv, (impl->t-fps*12)*8);
-	}
-		cudaMemset(yuv+W*H, 128, W*H/2);
-	if(impl->t > fps*12) {
-		drawCircle<<<640, 480>>>(yuv, (impl->t-fps*12)*15, 255);
+	} else if(impl->t < fps*10) {
+		printStripe<<<S/3+1, 3>>>(x, y, impl->t, yuv, 100 + (impl->t-fps*8)*10);
+	} else if(impl->t < fps*13) {
+		eraseStripe<<<S/3+1, 3>>>(x, y, impl->t, yuv, (impl->t-fps*10)*8);
 	}
 
-	if(impl->t > fps*16.5) {
-		drawCircle<<<640, 480>>>(yuv, (impl->t-fps*16.5)*15, 0);
+	cudaMemset(yuv+W*H, 128, W*H/2);
+	
+	if(impl->t > fps*10) {
+		drawCircle<<<640, 480>>>(yuv, (impl->t-fps*10)*15, 255);
+	}
+
+	if(impl->t > fps*13.5) {
+		drawCircle<<<640, 480>>>(yuv, (impl->t-fps*13.5)*15, 0);
 		paintStar<<<S/3+1, 3>>>(x, y, impl->t, yuv);
 	}
 
